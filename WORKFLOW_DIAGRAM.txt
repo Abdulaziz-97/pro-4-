@@ -1,0 +1,279 @@
+MUNDER DIFFLIN MULTI-AGENT SYSTEM - WORKFLOW DIAGRAM
+=====================================================
+
+┌─────────────────────────────────────────────────────────────┐
+│                    CUSTOMER REQUEST                          │
+│         (e.g., "Need 500 sheets of glossy paper")           │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  MAIN AGENT (GPT-4o-mini)                    │
+│  - Parses request                                            │
+│  - Extracts items & quantities                               │
+│  - Maps informal names to catalog names                      │
+│  - Decides which tools to call                               │
+│  - Orchestrates workflow                                     │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                ┌─────────┴─────────┐
+                │                   │
+                ▼                   ▼
+    ┌──────────────────┐  ┌──────────────────┐
+    │ QUOTE FLOW       │  │ ORDER FLOW       │
+    └─────────┬────────┘  └────────┬─────────┘
+              │                    │
+              │                    │
+    ┌─────────▼──────────────────────▼─────────┐
+    │            TOOL LAYER                      │
+    │  ┌──────────────────────────────────┐     │
+    │  │  1. check_inventory_availability │     │
+    │  │     - Query database              │     │
+    │  │     - Check stock levels          │     │
+    │  │     - Return availability status  │     │
+    │  └──────────────────────────────────┘     │
+    │                                            │
+    │  ┌──────────────────────────────────┐     │
+    │  │  2. search_past_quotes           │     │
+    │  │     - Search historical quotes    │     │
+    │  │     - Find similar orders         │     │
+    │  │     - Return pricing references   │     │
+    │  └──────────────────────────────────┘     │
+    │                                            │
+    │  ┌──────────────────────────────────┐     │
+    │  │  3. create_quote                 │     │
+    │  │     - Calculate base prices       │     │
+    │  │     - Apply bulk discounts        │     │
+    │  │       • 15% for 1000+ units       │     │
+    │  │       • 10% for 500+ units        │     │
+    │  │       • 5% for 100+ units         │     │
+    │  │     - Generate detailed quote     │     │
+    │  └──────────────────────────────────┘     │
+    │                                            │
+    │  ┌──────────────────────────────────┐     │
+    │  │  4. process_customer_sale        │     │
+    │  │     - Validate stock              │     │
+    │  │     - Calculate final price       │     │
+    │  │     - Create sales transactions   │     │
+    │  │     - Update inventory            │     │
+    │  └──────────────────────────────────┘     │
+    │                                            │
+    │  ┌──────────────────────────────────┐     │
+    │  │  5. restock_from_supplier        │     │
+    │  │     - Check cash balance          │     │
+    │  │     - Calculate supplier cost     │     │
+    │  │       (60% of retail)             │     │
+    │  │     - Get delivery date           │     │
+    │  │     - Create stock order          │     │
+    │  └──────────────────────────────────┘     │
+    │                                            │
+    │  ┌──────────────────────────────────┐     │
+    │  │  6. check_cash                   │     │
+    │  │     - Query transactions          │     │
+    │  │     - Calculate balance           │     │
+    │  │     - Return available funds      │     │
+    │  └──────────────────────────────────┘     │
+    └────────────────┬───────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────┐
+    │       DATABASE (SQLite)                 │
+    │  ┌──────────────────────────────────┐  │
+    │  │  transactions                     │  │
+    │  │  - Sales records                  │  │
+    │  │  - Stock orders                   │  │
+    │  └──────────────────────────────────┘  │
+    │  ┌──────────────────────────────────┐  │
+    │  │  inventory                        │  │
+    │  │  - Item catalog                   │  │
+    │  │  - Unit prices                    │  │
+    │  │  - Min stock levels               │  │
+    │  └──────────────────────────────────┘  │
+    │  ┌──────────────────────────────────┐  │
+    │  │  quotes (historical)              │  │
+    │  │  - Past pricing                   │  │
+    │  │  - Order patterns                 │  │
+    │  └──────────────────────────────────┘  │
+    └────────────────┬───────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────┐
+    │       AGENT RESPONSE                    │
+    │  - Professional customer message        │
+    │  - Quote details with pricing           │
+    │  - Availability status                  │
+    │  - Sale confirmation (if order)         │
+    │  - Restock notification (if needed)     │
+    └────────────────────────────────────────┘
+
+
+DECISION FLOW CHART
+===================
+
+Customer Request
+    │
+    ▼
+[Parse Request]
+    │
+    ├─> Extract Items & Quantities
+    ├─> Map Names to Catalog
+    └─> Detect Intent (Quote vs Order)
+    │
+    ▼
+[Check Inventory]
+    │
+    ├─> In Stock? ──Yes──> Continue
+    └─> Out of Stock? ──> Flag Issue, Continue with Partial
+    │
+    ▼
+[Search Historical Quotes]
+    │
+    └─> Find Similar Orders
+    └─> Reference Pricing Patterns
+    │
+    ▼
+[Generate Quote]
+    │
+    ├─> Calculate Base Price
+    ├─> Apply Bulk Discount (if applicable)
+    └─> Format Professional Quote
+    │
+    ▼
+[Is this an Order?]
+    │
+    ├──No──> Return Quote Only
+    │         └─> Send Response to Customer
+    │
+    └──Yes──> [Process Sale]
+              │
+              ├─> Validate Stock Again
+              ├─> Record Transactions
+              ├─> Update Inventory
+              │
+              ▼
+          [Check if Restock Needed]
+              │
+              ├──No──> Sale Complete
+              │         └─> Send Confirmation
+              │
+              └──Yes──> [Check Cash Balance]
+                        │
+                        ├──Insufficient──> Log Warning
+                        │                  └─> Send Confirmation
+                        │
+                        └──Sufficient──> [Order from Supplier]
+                                         │
+                                         ├─> Calculate Cost
+                                         ├─> Get Delivery Date
+                                         ├─> Record Stock Order
+                                         └─> Send Confirmation
+                                         
+
+DATA FLOW
+=========
+
+Input: Customer Request + Date
+   │
+   ▼
+Agent Processing
+   │
+   ├─> Tool Calls (with Date)
+   │   │
+   │   ├─> check_inventory_availability(items_json, date)
+   │   │      └─> SQL Query → Current Stock
+   │   │
+   │   ├─> search_past_quotes(keywords)
+   │   │      └─> SQL Query → Historical Data
+   │   │
+   │   ├─> create_quote(items_json, date)
+   │   │      └─> Calculation → Quote Details
+   │   │
+   │   ├─> process_customer_sale(items_json, date)
+   │   │      └─> SQL Insert → Transaction Record
+   │   │
+   │   └─> restock_from_supplier(item, qty, date)
+   │          └─> SQL Insert → Stock Order
+   │
+   ▼
+Output: Professional Response + Database Updates
+
+
+KEY FEATURES
+============
+
+✓ Single agent architecture (1 of 5 allowed agents)
+✓ 6 specialized tools for business operations
+✓ Automatic item name mapping (informal → catalog)
+✓ Tiered bulk discount system (5%, 10%, 15%)
+✓ Supplier cost optimization (60% of retail)
+✓ Cash balance validation before orders
+✓ Date-aware inventory tracking
+✓ Historical quote analysis for pricing
+✓ Automatic restocking when needed
+✓ Complete transaction logging
+✓ Professional customer communication
+
+
+ERROR HANDLING
+==============
+
+Insufficient Stock
+   └─> Return partial quote
+   └─> Warn customer
+   └─> Suggest alternatives
+
+Insufficient Funds (Supplier Order)
+   └─> Block order
+   └─> Log warning
+   └─> Continue with available inventory
+
+Item Not in Catalog
+   └─> Clear error message
+   └─> Process other items
+   └─> Suggest closest match
+
+Invalid Date Format
+   └─> Fallback to current date
+   └─> Log warning
+   └─> Continue processing
+
+
+TESTING FLOW
+============
+
+Initialize Database
+   │
+   ├─> Create tables
+   ├─> Load historical quotes
+   ├─> Generate sample inventory
+   └─> Seed initial cash ($50,000)
+   │
+   ▼
+Load Test Requests (quote_requests_sample.csv)
+   │
+   └─> 72 customer requests chronologically
+   │
+   ▼
+For Each Request:
+   │
+   ├─> Record starting state
+   ├─> Process through agent
+   ├─> Record ending state
+   └─> Log to test_results.csv
+   │
+   ▼
+Generate Final Financial Report
+   │
+   ├─> Cash balance
+   ├─> Inventory value
+   ├─> Total assets
+   └─> Top selling products
+
+
+This architecture provides:
+- Modularity (tools are independent)
+- Scalability (easy to add new tools)
+- Maintainability (clear separation of concerns)
+- Reliability (deterministic tool behavior)
+- Intelligence (LLM-powered orchestration)
+
