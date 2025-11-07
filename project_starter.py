@@ -562,49 +562,146 @@ model = OpenAIServerModel(
     api_base="https://openai.vocareum.com/v1"
 )
 
-agent = ToolCallingAgent(
+########################
+# MULTI-AGENT SYSTEM
+########################
+
+# Worker Agent 1: Inventory Agent
+# Responsible for stock checking, inventory reporting, and financial status
+inventory_agent = ToolCallingAgent(
     tools=[
         check_inventory_availability,
-        search_past_quotes,
-        create_quote,
-        process_customer_sale,
-        restock_from_supplier,
-        check_cash,
         get_full_inventory_report,
+        check_cash,
         get_financial_summary
     ],
     model=model,
-    max_steps=15
+    max_steps=10
 )
 
-def handle_request(request_text: str, request_date: str) -> str:
-    """Process customer request through agent."""
+# Worker Agent 2: Quotation Agent
+# Responsible for pricing, quote generation, and historical analysis
+quotation_agent = ToolCallingAgent(
+    tools=[
+        search_past_quotes,
+        create_quote
+    ],
+    model=model,
+    max_steps=10
+)
+
+# Worker Agent 3: Sales-Fulfillment Agent
+# Responsible for order processing and supplier restocking
+sales_agent = ToolCallingAgent(
+    tools=[
+        process_customer_sale,
+        restock_from_supplier
+    ],
+    model=model,
+    max_steps=10
+)
+
+########################
+# ORCHESTRATOR
+########################
+
+def orchestrate_request(request_text: str, request_date: str) -> str:
+    """
+    Orchestrator that coordinates multiple agents to handle customer requests.
+    
+    This function analyzes the customer request and delegates tasks to appropriate
+    worker agents (Inventory, Quotation, Sales) in the correct sequence.
+    
+    Args:
+        request_text: Customer's request
+        request_date: Date of the request (YYYY-MM-DD)
+    
+    Returns:
+        Final customer-facing response
+    """
     try:
-        prompt = f"""You are a sales agent for Munder Difflin Paper Company. Today is {request_date}.
+        # Determine if this is a quote request or an order
+        is_order = any(keyword in request_text.lower() for keyword in ['order', 'buy', 'purchase', 'place an order'])
+        
+        # Extract items from request (simplified - could be enhanced with better parsing)
+        # For now, we'll let the agents handle the extraction
+        
+        responses = []
+        
+        # Step 1: Check inventory availability (Inventory Agent)
+        inventory_prompt = f"""Today is {request_date}.
 
 Customer request: {request_text}
 
-Your tasks:
-1. Parse items/quantities from the request (map informal names to catalog names)
-2. Check inventory availability
-3. Search past quotes for similar orders
-4. Generate a detailed quote
-5. If request implies purchase ("order", "buy"), process the sale
-6. Check if restock is needed after sale
+Task: Check if we have the requested items in stock.
+- Extract item names and quantities from the request
+- Map informal names to exact catalog names (e.g., "glossy paper" to "Glossy paper")
+- Use check_inventory_availability to verify stock levels
+- Report availability status
 
-Available catalog items: A4 paper, Cardstock, Colored paper, Glossy paper, Matte paper, Poster paper, 
+Available items include: A4 paper, Cardstock, Colored paper, Glossy paper, Matte paper, Poster paper, 
 Construction paper, Photo paper, Paper plates, Paper cups, Paper napkins, Envelopes, Sticky notes, 
-Notepads, Invitation cards, Flyers, Party streamers, and more.
+Notepads, Invitation cards, Flyers, Party streamers, and more."""
 
-IMPORTANT: Use exact catalog names and always pass date {request_date} to tools.
+        inventory_response = inventory_agent.run(inventory_prompt)
+        responses.append(f"INVENTORY CHECK:\n{inventory_response}")
+        
+        # Step 2: Generate quote (Quotation Agent)
+        quote_prompt = f"""Today is {request_date}.
 
-Provide a professional customer response."""
+Customer request: {request_text}
+Inventory status: {inventory_response}
 
-        response = agent.run(prompt)
-        return str(response)
+Task: Generate a professional price quote.
+- Search for similar past quotes for pricing guidance
+- Calculate prices with bulk discounts (15% for 1000+, 10% for 500+, 5% for 100+)
+- Provide detailed line-item breakdown
+- Show transparent pricing
+
+Use create_quote to generate the final quote."""
+
+        quote_response = quotation_agent.run(quote_prompt)
+        responses.append(f"QUOTE:\n{quote_response}")
+        
+        # Step 3: If it's an order, process the sale (Sales Agent)
+        if is_order:
+            sales_prompt = f"""Today is {request_date}.
+
+Customer request: {request_text}
+Inventory status: {inventory_response}
+Quote: {quote_response}
+
+Task: Process the customer order.
+- Use process_customer_sale to record the transaction
+- After sale, check if restocking is needed
+- If inventory is low and funds available, use restock_from_supplier
+
+Provide confirmation of the sale and any restock actions."""
+
+            sales_response = sales_agent.run(sales_prompt)
+            responses.append(f"ORDER PROCESSING:\n{sales_response}")
+        
+        # Synthesize final customer response
+        if is_order:
+            final_response = f"""Thank you for your order!
+
+{quote_response}
+
+{sales_response}
+
+Your order has been processed. We appreciate your business!"""
+        else:
+            final_response = f"""Thank you for your inquiry!
+
+{quote_response}
+
+All quoted items are based on current availability. Please let us know if you'd like to proceed with this order."""
+        
+        return final_response
         
     except Exception as e:
-        return f"Error processing request: {str(e)}"
+        print(f"Orchestrator error: {str(e)}")
+        return f"We apologize, but we encountered an issue processing your request. Please contact our support team. (Error: {str(e)[:100]})"
 
 def run_test_scenarios():
     print("=" * 60)
@@ -643,7 +740,7 @@ def run_test_scenarios():
         print("-"*60)
         
         request_with_date = f"{row['request']} (Date: {request_date})"
-        response = handle_request(request_with_date, request_date)
+        response = orchestrate_request(request_with_date, request_date)
         
         report = generate_financial_report(request_date)
         current_cash = report["cash_balance"]

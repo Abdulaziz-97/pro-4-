@@ -1,6 +1,12 @@
 MUNDER DIFFLIN MULTI-AGENT SYSTEM - WORKFLOW DIAGRAM
 =====================================================
 
+ARCHITECTURE OVERVIEW
+=====================
+
+This system uses a multi-agent architecture with 3 specialized worker agents
+coordinated by an orchestrator function.
+
 ┌─────────────────────────────────────────────────────────────┐
 │                    CUSTOMER REQUEST                          │
 │         (e.g., "Need 500 sheets of glossy paper")           │
@@ -8,103 +14,184 @@ MUNDER DIFFLIN MULTI-AGENT SYSTEM - WORKFLOW DIAGRAM
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  MAIN AGENT (GPT-4o-mini)                    │
-│  - Parses request                                            │
-│  - Extracts items & quantities                               │
-│  - Maps informal names to catalog names                      │
-│  - Decides which tools to call                               │
-│  - Orchestrates workflow                                     │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                ┌─────────┴─────────┐
-                │                   │
-                ▼                   ▼
-    ┌──────────────────┐  ┌──────────────────┐
-    │ QUOTE FLOW       │  │ ORDER FLOW       │
-    └─────────┬────────┘  └────────┬─────────┘
-              │                    │
-              │                    │
-    ┌─────────▼──────────────────────▼─────────┐
-    │            TOOL LAYER                      │
-    │  ┌──────────────────────────────────┐     │
-    │  │  1. check_inventory_availability │     │
-    │  │     - Query database              │     │
-    │  │     - Check stock levels          │     │
-    │  │     - Return availability status  │     │
-    │  └──────────────────────────────────┘     │
-    │                                            │
-    │  ┌──────────────────────────────────┐     │
-    │  │  2. search_past_quotes           │     │
-    │  │     - Search historical quotes    │     │
-    │  │     - Find similar orders         │     │
-    │  │     - Return pricing references   │     │
-    │  └──────────────────────────────────┘     │
-    │                                            │
-    │  ┌──────────────────────────────────┐     │
-    │  │  3. create_quote                 │     │
-    │  │     - Calculate base prices       │     │
-    │  │     - Apply bulk discounts        │     │
-    │  │       • 15% for 1000+ units       │     │
-    │  │       • 10% for 500+ units        │     │
-    │  │       • 5% for 100+ units         │     │
-    │  │     - Generate detailed quote     │     │
-    │  └──────────────────────────────────┘     │
-    │                                            │
-    │  ┌──────────────────────────────────┐     │
-    │  │  4. process_customer_sale        │     │
-    │  │     - Validate stock              │     │
-    │  │     - Calculate final price       │     │
-    │  │     - Create sales transactions   │     │
-    │  │     - Update inventory            │     │
-    │  └──────────────────────────────────┘     │
-    │                                            │
-    │  ┌──────────────────────────────────┐     │
-    │  │  5. restock_from_supplier        │     │
-    │  │     - Check cash balance          │     │
-    │  │     - Calculate supplier cost     │     │
-    │  │       (60% of retail)             │     │
-    │  │     - Get delivery date           │     │
-    │  │     - Create stock order          │     │
-    │  └──────────────────────────────────┘     │
-    │                                            │
-    │  ┌──────────────────────────────────┐     │
-    │  │  6. check_cash                   │     │
-    │  │     - Query transactions          │     │
-    │  │     - Calculate balance           │     │
-    │  │     - Return available funds      │     │
-    │  └──────────────────────────────────┘     │
-    └────────────────┬───────────────────────────┘
-                     │
-                     ▼
-    ┌────────────────────────────────────────┐
-    │       DATABASE (SQLite)                 │
-    │  ┌──────────────────────────────────┐  │
-    │  │  transactions                     │  │
-    │  │  - Sales records                  │  │
-    │  │  - Stock orders                   │  │
-    │  └──────────────────────────────────┘  │
-    │  ┌──────────────────────────────────┐  │
-    │  │  inventory                        │  │
-    │  │  - Item catalog                   │  │
-    │  │  - Unit prices                    │  │
-    │  │  - Min stock levels               │  │
-    │  └──────────────────────────────────┘  │
-    │  ┌──────────────────────────────────┐  │
-    │  │  quotes (historical)              │  │
-    │  │  - Past pricing                   │  │
-    │  │  - Order patterns                 │  │
-    │  └──────────────────────────────────┘  │
-    └────────────────┬───────────────────────┘
-                     │
-                     ▼
-    ┌────────────────────────────────────────┐
-    │       AGENT RESPONSE                    │
-    │  - Professional customer message        │
-    │  - Quote details with pricing           │
-    │  - Availability status                  │
-    │  - Sale confirmation (if order)         │
-    │  - Restock notification (if needed)     │
-    └────────────────────────────────────────┘
+│                  ORCHESTRATOR FUNCTION                       │
+│  - Analyzes customer request                                 │
+│  - Determines request type (quote vs order)                  │
+│  - Routes to appropriate worker agents in sequence           │
+│  - Synthesizes responses from multiple agents                │
+│  - Returns professional customer response                    │
+└────────────┬──────────────────┬────────────────┬────────────┘
+             │                  │                 │
+        STEP 1               STEP 2           STEP 3
+             │                  │                 │
+             ▼                  ▼                 ▼
+┌───────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│ INVENTORY AGENT   │  │ QUOTATION AGENT  │  │ SALES AGENT      │
+│ (Worker Agent 1)  │  │ (Worker Agent 2) │  │ (Worker Agent 3) │
+└───────────────────┘  └──────────────────┘  └──────────────────┘
+
+
+AGENT DETAILS
+=============
+
+╔════════════════════════════════════════════════════════════╗
+║             WORKER AGENT 1: INVENTORY AGENT                ║
+╚════════════════════════════════════════════════════════════╝
+
+Primary Responsibility:
+  - Stock checking and inventory management
+  - Financial status monitoring
+
+Tools Assigned to This Agent:
+  1. check_inventory_availability
+     Purpose: Validate stock levels for requested items
+     Helper functions used: get_stock_level()
+     
+  2. get_full_inventory_report
+     Purpose: Get complete inventory snapshot
+     Helper functions used: get_all_inventory()
+     
+  3. check_cash
+     Purpose: Monitor current cash balance
+     Helper functions used: get_cash_balance()
+     
+  4. get_financial_summary
+     Purpose: Generate comprehensive financial report
+     Helper functions used: generate_financial_report()
+
+Agent Workflow:
+  Input: Customer request + date
+  Processing:
+    1. Extract item names and quantities from request
+    2. Map informal names to catalog (e.g., "glossy" → "Glossy paper")
+    3. Query stock levels using get_stock_level()
+    4. Return availability status
+  Output: Inventory availability report
+
+
+╔════════════════════════════════════════════════════════════╗
+║             WORKER AGENT 2: QUOTATION AGENT                ║
+╚════════════════════════════════════════════════════════════╝
+
+Primary Responsibility:
+  - Price calculation and quote generation
+  - Historical pricing analysis
+
+Tools Assigned to This Agent:
+  1. search_past_quotes
+     Purpose: Find similar historical quotes
+     Helper functions used: search_quote_history()
+     
+  2. create_quote
+     Purpose: Generate detailed price quotes with bulk discounts
+     Helper functions used: Paper supplies catalog (pricing data)
+
+Agent Workflow:
+  Input: Customer request + inventory status + date
+  Processing:
+    1. Search historical quotes for similar orders
+    2. Extract item quantities from request
+    3. Calculate base prices from catalog
+    4. Apply bulk discounts:
+       - 15% off for 1000+ units
+       - 10% off for 500+ units
+       - 5% off for 100+ units
+    5. Generate line-item breakdown
+  Output: Detailed professional quote
+
+
+╔════════════════════════════════════════════════════════════╗
+║         WORKER AGENT 3: SALES-FULFILLMENT AGENT            ║
+╚════════════════════════════════════════════════════════════╝
+
+Primary Responsibility:
+  - Order processing and transaction recording
+  - Supplier coordination and restocking
+
+Tools Assigned to This Agent:
+  1. process_customer_sale
+     Purpose: Process sales and record transactions
+     Helper functions used: get_stock_level(), create_transaction()
+     
+  2. restock_from_supplier
+     Purpose: Order stock from suppliers
+     Helper functions used: get_cash_balance(), 
+                           get_supplier_delivery_date(), 
+                           create_transaction()
+
+Agent Workflow:
+  Input: Customer order + inventory status + quote + date
+  Processing:
+    1. Validate stock availability
+    2. Record sales transaction via create_transaction()
+    3. Update inventory levels
+    4. Check if restocking needed
+    5. If needed, order from supplier (60% of retail cost)
+    6. Calculate delivery date via get_supplier_delivery_date()
+  Output: Order confirmation and restock status
+
+
+ORCHESTRATION FLOW
+==================
+
+Quote Request Flow:
+───────────────────
+
+Customer Request (Quote)
+    │
+    ▼
+┌─────────────────────────┐
+│ ORCHESTRATOR            │
+│ - Identifies as quote   │
+│ - Routes to agents      │
+└───────┬─────────────────┘
+        │
+        ├──> STEP 1: Inventory Agent
+        │    └─> Check stock availability
+        │    └─> Return: "✓ Item X: 500 available"
+        │
+        ├──> STEP 2: Quotation Agent
+        │    └─> Search past quotes
+        │    └─> Calculate prices with discounts
+        │    └─> Return: "💰 TOTAL: $X.XX"
+        │
+        └──> STEP 3: Skip (quote only, no order)
+             
+    Orchestrator synthesizes:
+    "Thank you for your inquiry! [Quote details]
+     All quoted items based on current availability."
+
+
+Order Request Flow:
+──────────────────
+
+Customer Request (Order)
+    │
+    ▼
+┌─────────────────────────┐
+│ ORCHESTRATOR            │
+│ - Identifies as order   │
+│ - Routes to agents      │
+└───────┬─────────────────┘
+        │
+        ├──> STEP 1: Inventory Agent
+        │    └─> Check stock availability
+        │    └─> Return: "✓ Items available"
+        │
+        ├──> STEP 2: Quotation Agent
+        │    └─> Generate quote with pricing
+        │    └─> Return: "💰 TOTAL: $X.XX"
+        │
+        └──> STEP 3: Sales Agent
+             └─> Process sale transaction
+             └─> Record to database
+             └─> Check restock needs
+             └─> Order from supplier if needed
+             └─> Return: "✅ SALE PROCESSED!"
+             
+    Orchestrator synthesizes:
+    "Thank you for your order! [Quote + Confirmation]
+     Your order has been processed."
 
 
 DECISION FLOW CHART
@@ -113,167 +200,230 @@ DECISION FLOW CHART
 Customer Request
     │
     ▼
-[Parse Request]
+[Orchestrator Analyzes Request]
     │
-    ├─> Extract Items & Quantities
-    ├─> Map Names to Catalog
-    └─> Detect Intent (Quote vs Order)
+    ├─> Extract request type
+    └─> Is it an order? (keywords: "order", "buy", "purchase")
     │
-    ▼
-[Check Inventory]
+    ├─ YES → Order Flow
+    │   │
+    │   ├─> Inventory Agent: Check stock
+    │   │   └─> Available? ─YES→ Continue
+    │   │       └─NO→ Partial/Warning
+    │   │
+    │   ├─> Quotation Agent: Generate quote
+    │   │   ├─> Search past quotes
+    │   │   ├─> Calculate prices
+    │   │   └─> Apply bulk discounts
+    │   │
+    │   └─> Sales Agent: Process order
+    │       ├─> Record transaction
+    │       ├─> Update inventory
+    │       ├─> Check if restock needed
+    │       └─> Order from supplier if:
+    │           ├─ Inventory low? ─YES→
+    │           └─ Cash available? ─YES→ Restock
     │
-    ├─> In Stock? ──Yes──> Continue
-    └─> Out of Stock? ──> Flag Issue, Continue with Partial
-    │
-    ▼
-[Search Historical Quotes]
-    │
-    └─> Find Similar Orders
-    └─> Reference Pricing Patterns
-    │
-    ▼
-[Generate Quote]
-    │
-    ├─> Calculate Base Price
-    ├─> Apply Bulk Discount (if applicable)
-    └─> Format Professional Quote
-    │
-    ▼
-[Is this an Order?]
-    │
-    ├──No──> Return Quote Only
-    │         └─> Send Response to Customer
-    │
-    └──Yes──> [Process Sale]
-              │
-              ├─> Validate Stock Again
-              ├─> Record Transactions
-              ├─> Update Inventory
-              │
-              ▼
-          [Check if Restock Needed]
-              │
-              ├──No──> Sale Complete
-              │         └─> Send Confirmation
-              │
-              └──Yes──> [Check Cash Balance]
-                        │
-                        ├──Insufficient──> Log Warning
-                        │                  └─> Send Confirmation
-                        │
-                        └──Sufficient──> [Order from Supplier]
-                                         │
-                                         ├─> Calculate Cost
-                                         ├─> Get Delivery Date
-                                         ├─> Record Stock Order
-                                         └─> Send Confirmation
-                                         
+    └─ NO → Quote Flow
+        │
+        ├─> Inventory Agent: Check stock
+        │   └─> Report availability
+        │
+        └─> Quotation Agent: Generate quote
+            ├─> Search past quotes
+            ├─> Calculate prices
+            └─> Apply bulk discounts
 
-DATA FLOW
-=========
+
+DATA FLOW BETWEEN AGENTS
+=========================
 
 Input: Customer Request + Date
    │
    ▼
-Agent Processing
+Orchestrator
    │
-   ├─> Tool Calls (with Date)
-   │   │
-   │   ├─> check_inventory_availability(items_json, date)
-   │   │      └─> SQL Query → Current Stock
-   │   │
-   │   ├─> search_past_quotes(keywords)
-   │   │      └─> SQL Query → Historical Data
-   │   │
-   │   ├─> create_quote(items_json, date)
-   │   │      └─> Calculation → Quote Details
-   │   │
-   │   ├─> process_customer_sale(items_json, date)
-   │   │      └─> SQL Insert → Transaction Record
-   │   │
-   │   └─> restock_from_supplier(item, qty, date)
-   │          └─> SQL Insert → Stock Order
+   ├─> To Inventory Agent:
+   │   Input: "Customer request: [text], Date: [YYYY-MM-DD]"
+   │   Output: "✓ Item A: 500 available, ⚠ Item B: Only 200 available"
    │
-   ▼
-Output: Professional Response + Database Updates
+   ├─> To Quotation Agent:
+   │   Input: "Customer request: [text], Inventory status: [from Agent 1], Date: [YYYY-MM-DD]"
+   │   Output: "Line items with prices, Total: $X.XX"
+   │
+   ├─> To Sales Agent (if order):
+   │   Input: "Customer request: [text], Inventory: [from Agent 1], Quote: [from Agent 2], Date: [YYYY-MM-DD]"
+   │   Output: "✅ Sale processed, Revenue: $X.XX, Restocked: Item Y"
+   │
+   └─> Orchestrator Output:
+       Synthesized customer response combining all agent outputs
+
+
+DATABASE INTERACTIONS
+=====================
+
+┌────────────────────────────────────────┐
+│       DATABASE (SQLite)                 │
+│  ┌──────────────────────────────────┐  │
+│  │  transactions                     │  │
+│  │  - Sales records                  │◄─┼─ Sales Agent
+│  │  - Stock orders                   │  │  (create_transaction)
+│  └──────────────────────────────────┘  │
+│  ┌──────────────────────────────────┐  │
+│  │  inventory                        │  │
+│  │  - Item catalog                   │◄─┼─ Inventory Agent
+│  │  - Unit prices                    │  │  (get_stock_level,
+│  │  - Stock levels                   │  │   get_all_inventory)
+│  └──────────────────────────────────┘  │
+│  ┌──────────────────────────────────┐  │
+│  │  quotes (historical)              │  │
+│  │  - Past pricing                   │◄─┼─ Quotation Agent
+│  │  - Order patterns                 │  │  (search_quote_history)
+│  └──────────────────────────────────┘  │
+└────────────────────────────────────────┘
+
+
+HELPER FUNCTION MAPPING
+========================
+
+✅ All 7 Required Helper Functions Used:
+
+1. create_transaction()
+   Used by: Sales Agent
+   Tool: process_customer_sale, restock_from_supplier
+   Purpose: Record sales and supplier orders to database
+
+2. get_all_inventory()
+   Used by: Inventory Agent
+   Tool: get_full_inventory_report
+   Purpose: Get complete inventory snapshot
+
+3. get_stock_level()
+   Used by: Inventory Agent, Sales Agent
+   Tool: check_inventory_availability, process_customer_sale
+   Purpose: Check stock for specific items
+
+4. get_supplier_delivery_date()
+   Used by: Sales Agent
+   Tool: restock_from_supplier
+   Purpose: Calculate delivery timeframes based on quantity
+
+5. get_cash_balance()
+   Used by: Inventory Agent, Sales Agent
+   Tool: check_cash, restock_from_supplier
+   Purpose: Monitor available funds
+
+6. generate_financial_report()
+   Used by: Inventory Agent
+   Tool: get_financial_summary
+   Purpose: Generate comprehensive financial report
+
+7. search_quote_history()
+   Used by: Quotation Agent
+   Tool: search_past_quotes
+   Purpose: Find similar historical quotes for pricing guidance
 
 
 KEY FEATURES
 ============
 
-✓ Single agent architecture (1 of 5 allowed agents)
-✓ 6 specialized tools for business operations
-✓ Automatic item name mapping (informal → catalog)
-✓ Tiered bulk discount system (5%, 10%, 15%)
-✓ Supplier cost optimization (60% of retail)
-✓ Cash balance validation before orders
-✓ Date-aware inventory tracking
-✓ Historical quote analysis for pricing
+✓ Multi-agent architecture with 3 specialized worker agents
+✓ Orchestrator coordinates agents in proper sequence
+✓ Clear separation of responsibilities (no overlap)
+✓ Intelligent request routing (quote vs order)
+✓ Agent-to-agent information passing via orchestrator
+✓ All 7 required helper functions utilized
+✓ Bulk discount system (5%, 10%, 15% tiers)
 ✓ Automatic restocking when needed
-✓ Complete transaction logging
+✓ Cash balance validation before orders
+✓ Historical quote analysis for pricing
 ✓ Professional customer communication
 
 
-ERROR HANDLING
-==============
+AGENT COORDINATION EXAMPLES
+============================
 
-Insufficient Stock
-   └─> Return partial quote
-   └─> Warn customer
-   └─> Suggest alternatives
+Example 1: Simple Quote Request
+────────────────────────────────
 
-Insufficient Funds (Supplier Order)
-   └─> Block order
-   └─> Log warning
-   └─> Continue with available inventory
+Request: "I need 300 sheets of A4 paper"
 
-Item Not in Catalog
-   └─> Clear error message
-   └─> Process other items
-   └─> Suggest closest match
+1. Orchestrator → Inventory Agent
+   Prompt: "Check stock for A4 paper, 300 sheets, Date: 2025-04-01"
+   Response: "✓ A4 paper: 500 available (requested 300)"
 
-Invalid Date Format
-   └─> Fallback to current date
-   └─> Log warning
-   └─> Continue processing
+2. Orchestrator → Quotation Agent
+   Prompt: "Generate quote for A4 paper 300 sheets, in stock"
+   Response: "300 × $0.05 = $15.00 (5% bulk discount = $14.25)"
+
+3. Orchestrator → Customer
+   Response: "Thank you! Quote: $14.25 for 300 A4 paper sheets"
 
 
-TESTING FLOW
-============
+Example 2: Large Order with Restocking
+───────────────────────────────────────
 
-Initialize Database
-   │
-   ├─> Create tables
-   ├─> Load historical quotes
-   ├─> Generate sample inventory
-   └─> Seed initial cash ($50,000)
-   │
-   ▼
-Load Test Requests (quote_requests_sample.csv)
-   │
-   └─> 72 customer requests chronologically
-   │
-   ▼
-For Each Request:
-   │
-   ├─> Record starting state
-   ├─> Process through agent
-   ├─> Record ending state
-   └─> Log to test_results.csv
-   │
-   ▼
-Generate Final Financial Report
-   │
-   ├─> Cash balance
-   ├─> Inventory value
-   ├─> Total assets
-   └─> Top selling products
+Request: "I want to order 1000 glossy paper sheets"
+
+1. Orchestrator → Inventory Agent
+   Response: "✓ Glossy paper: 1200 available"
+
+2. Orchestrator → Quotation Agent
+   Response: "1000 × $0.20 = $200 (15% discount = $170)"
+
+3. Orchestrator → Sales Agent
+   Response: "✅ Sale processed! Revenue: $170
+            ⚠ Stock now 200 (below min 150)
+            ✅ Restocked 500 units, Cost: $60, Delivery: 4 days"
+
+4. Orchestrator → Customer
+   Response: "Order confirmed! Total: $170. Thank you!"
 
 
-This architecture provides:
-- Modularity (tools are independent)
-- Scalability (easy to add new tools)
-- Maintainability (clear separation of concerns)
-- Reliability (deterministic tool behavior)
-- Intelligence (LLM-powered orchestration)
+ARCHITECTURE BENEFITS
+=====================
 
+1. Separation of Concerns
+   - Each agent has clear, distinct responsibility
+   - No overlap between agent functions
+   - Easy to test individual agents
+
+2. Scalability
+   - New agents can be added without affecting existing ones
+   - Tools can be redistributed as business needs change
+   - Easy to add new capabilities
+
+3. Maintainability
+   - Changes to one agent don't affect others
+   - Clear code organization
+   - Well-defined interfaces
+
+4. Flexibility
+   - Orchestrator can adapt routing logic
+   - Agents can be called in different sequences
+   - Easy to handle complex workflows
+
+5. Robustness
+   - Errors in one agent don't crash entire system
+   - Orchestrator can handle agent failures gracefully
+   - Each agent has focused, testable logic
+
+
+WORKFLOW SUMMARY
+================
+
+The multi-agent system processes customer requests through:
+
+1. ORCHESTRATOR analyzes request type and routes to agents
+2. INVENTORY AGENT checks stock and financial status
+3. QUOTATION AGENT generates pricing with discounts
+4. SALES AGENT (if order) processes transaction and restocking
+5. ORCHESTRATOR synthesizes professional customer response
+
+All agents use the smolagents framework with ToolCallingAgent classes.
+All 7 required helper functions are distributed across agent tools.
+Clear orchestration ensures proper sequencing and data flow.
+
+═══════════════════════════════════════════════════════════════════════
+                 MULTI-AGENT SYSTEM ARCHITECTURE COMPLETE
+═══════════════════════════════════════════════════════════════════════
